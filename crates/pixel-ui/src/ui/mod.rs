@@ -27,16 +27,21 @@ pub const CHECKER_B: egui::Color32 = egui::Color32::from_rgb(0x2D, 0x29, 0x37);
 pub const GRID_LINE: egui::Color32 = egui::Color32::from_rgb(0x51, 0x4B, 0x5F);
 
 /// Applica il tema visivo al contesto egui (una volta sola, all'avvio).
+///
+/// egui 0.37 segue la preferenza del sistema operativo (chiaro/scuro):
+/// imponiamo il tema scuro della "officina" e personalizziamo entrambi
+/// gli stili, così l'aspetto resta quello voluto su ogni macchina.
 pub fn apply_theme(ctx: &egui::Context) {
-    let mut style = egui::Style::default();
-    let visuals = &mut style.visuals;
-    *visuals = egui::Visuals::dark();
-    visuals.panel_fill = PANEL_BG;
-    visuals.window_fill = PANEL_BG;
-    visuals.extreme_bg_color = CANVAS_BG;
-    visuals.faint_bg_color = CHECKER_B;
-    visuals.override_text_color = Some(TEXT);
-    visuals.selection.bg_fill = ACCENT.gamma_multiply(0.30);
-    visuals.selection.stroke = egui::Stroke::new(1.5, ACCENT);
-    ctx.set_global_style(style);
+    ctx.set_theme(egui::Theme::Dark);
+    ctx.all_styles_mut(|style| {
+        let visuals = &mut style.visuals;
+        *visuals = egui::Visuals::dark();
+        visuals.panel_fill = PANEL_BG;
+        visuals.window_fill = PANEL_BG;
+        visuals.extreme_bg_color = CANVAS_BG;
+        visuals.faint_bg_color = CHECKER_B;
+        visuals.override_text_color = Some(TEXT);
+        visuals.selection.bg_fill = ACCENT.gamma_multiply(0.30);
+        visuals.selection.stroke = egui::Stroke::new(1.5, ACCENT);
+    });
 }
