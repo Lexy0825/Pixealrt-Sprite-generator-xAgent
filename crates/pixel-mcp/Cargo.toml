@@ -1,0 +1,20 @@
+[package]
+name = "pixel-mcp"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "Server MCP stdio: espone la creazione e modifica di pixel-art agli agenti AI"
+
+[dependencies]
+pixel-core.workspace = true
+
+anyhow.workspace = true
+rmcp.workspace = true
+schemars.workspace = true
+serde.workspace = true
+tokio.workspace = true
+base64 = "0.22"
+
+[dev-dependencies]
+serde_json.workspace = true

@@ -1,0 +1,14 @@
+[package]
+name = "pixel-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "Logica dati per pixel-art: griglie trasparenti, progetti multi-frame, export PNG e ZIP"
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+image.workspace = true
+zip.workspace = true

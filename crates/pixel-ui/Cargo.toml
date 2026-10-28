@@ -1,0 +1,14 @@
+[package]
+name = "pixel-ui"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "Editor desktop cross-platform per pixel-art e tileset con anteprima animazione"
+
+[dependencies]
+pixel-core.workspace = true
+
+eframe.workspace = true
+egui.workspace = true
+rfd.workspace = true

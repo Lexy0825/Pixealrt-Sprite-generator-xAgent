@@ -1,0 +1,9 @@
+/target
+*.pixproj
+*.png
+*.zip
+*.backup
+.cargo/
+/freebuff-project-id
+!.github/**
+!docs/*.png

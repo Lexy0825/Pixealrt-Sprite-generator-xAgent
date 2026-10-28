@@ -1,0 +1,35 @@
+[workspace]
+resolver = "3"
+members = ["crates/pixel-core", "crates/pixel-mcp", "crates/pixel-ui"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+authors = ["Leon"]
+
+# Versioni scritte a single source of truth e verificate con la ricerca di
+# ottobre 2026: aggiornabili in un solo posto se una crate riscrive la API.
+[workspace.dependencies]
+pixel-core = { path = "crates/pixel-core" }
+
+anyhow = "1"
+thiserror = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+image = { version = "0.25", default-features = false, features = ["png"] }
+zip = { version = "9", default-features = false, features = ["deflate"] }
+
+# Server MCP (protocollo ufficiale Rust SDK), trasporto stdio + macro #[tool].
+rmcp = { version = "3.8", features = ["server", "macros", "schemars", "transport-io"] }
+schemars = "1"
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "io-std"] }
+
+# App desktop cross-platform (renderer glow di default).
+eframe = "0.37"
+egui = "0.37"
+rfd = "0.15"
+
+[profile.release]
+opt-level = 3
+lto = "thin"
