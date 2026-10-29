@@ -1751,6 +1751,8 @@ dependencies = [
  "num-traits",
  "png",
  "tiff",
+ "zune-core",
+ "zune-jpeg",
 ]
 
 [[package]]
@@ -2702,6 +2704,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "base64 0.22.1",
+ "image",
  "pixel-core",
  "rmcp",
  "schemars",
@@ -2716,8 +2719,11 @@ version = "0.1.0"
 dependencies = [
  "eframe",
  "egui",
+ "image",
  "pixel-core",
  "rfd",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

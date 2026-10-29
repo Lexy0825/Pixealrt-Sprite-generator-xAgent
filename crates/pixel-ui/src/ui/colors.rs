@@ -63,15 +63,9 @@ impl ColorPickerState {
     }
 }
 
-/// Pannello laterale dei colori, chiamato in `ui()` al pari degli altri.
-pub fn show(app: &mut PixelApp, root: &mut egui::Ui) {
-    egui::Panel::right("colors_panel")
-        .default_size(240.0)
-        .resizable(true)
-        .show(root, |ui| {
-            ui.add_space(8.0);
-            ui.strong("Colori");
-            ui.add_space(4.0);
+/// Contenuto della sezione "Colori" del dock laterale.
+pub fn colors_content(ui: &mut egui::Ui, app: &mut PixelApp) {
+    ui.add_space(8.0);
 
             // Ruota e slider modificano lo stato del selettore; alla fine
             // il pennello adotta il colore risultante.
@@ -82,14 +76,15 @@ pub fn show(app: &mut PixelApp, root: &mut egui::Ui) {
             }
 
             ui.add_space(10.0);
-            ui.weak("Palette del progetto");
-            let palette = app.project_palette();
-            update_brush_if_picked(ui, &palette, app);
+            ui.strong("Palette del progetto");
+            palette_section(ui, app);
 
             ui.add_space(8.0);
             ui.weak("Recenti");
             let recents = app.recent_colors.clone();
-            update_brush_if_picked(ui, &recents, app);
+            if let Some(color) = swatch_row_pick(ui, &recents, app.brush) {
+                app.set_brush(color);
+            }
 
             ui.add_space(10.0);
             ui.strong("Pennello");
@@ -108,15 +103,6 @@ pub fn show(app: &mut PixelApp, root: &mut egui::Ui) {
                 ))
                 .weak(),
             );
-        });
-}
-
-/// Se uno swatch della lista è stato cliccato, porta il pennello (e la
-/// ruota, via `set_brush`) sul nuovo colore.
-fn update_brush_if_picked(ui: &mut egui::Ui, colors: &[Rgba], app: &mut PixelApp) {
-    if let Some(color) = swatch_row_pick(ui, colors, app.brush) {
-        app.set_brush(color);
-    }
 }
 
 /// Ruota della tinta + disco di saturazione. Modifica `app.picker` in
@@ -264,6 +250,8 @@ fn sliders(ui: &mut egui::Ui, app: &mut PixelApp) -> bool {
 /// File di swatch cliccabili; restituisce il colore scelto se un click è
 /// avvenuto; il colore corrente è bordato d'accento.
 fn swatch_row_pick(ui: &mut egui::Ui, colors: &[Rgba], current: Rgba) -> Option<Rgba> {
+    // `swatch_click` usato come "click semplice": i recenti non sono
+    // eliminabili col destro (nessun reale perduto: sono indicative).
     let mut picked = None;
     let per_row = ((ui.available_width() / (SWATCH + 4.0)).floor() as usize).max(3);
     for chunk in colors.chunks(per_row) {
@@ -370,6 +358,74 @@ pub fn rgb_to_hsv(r: u8, g: u8, b: u8) -> (f32, f32, f32) {
     let hue = (hue / 6.0 + 1.0).fract();
     let sat = if max == 0.0 { 0.0 } else { delta / max };
     (hue, sat, max)
+}
+
+// ——— palette esplicita del progetto ——————————————————————————————————
+
+/// Azione su uno swatch della palette: `true` = rimozione (destro).
+fn swatch_click(ui: &mut egui::Ui, color: Rgba, current: bool) -> Option<bool> {
+    let (rect, response) = ui.allocate_exact_size(egui::vec2(SWATCH, SWATCH), egui::Sense::click());
+    let [r, g, b, a] = color.channels();
+    let color32 = egui::Color32::from_rgba_unmultiplied(r, g, b, a);
+    ui.painter().rect_filled(rect, 3.0, color32);
+    if response.secondary_clicked() {
+        return Some(true);
+    }
+    let stroke = if current {
+        egui::Stroke::new(2.0, ACCENT)
+    } else {
+        egui::Stroke::new(1.0, GRID_LINE)
+    };
+    ui.painter()
+        .rect_stroke(rect, 3.0, stroke, egui::StrokeKind::Middle);
+    let hover = response.on_hover_text(format!(
+        "#{r:02X}{g:02X}{b:02X} · opacità {:.0}%
+click = usa, destro = toglie dalla palette",
+        f32::from(a) / 2.55
+    ));
+    if hover.clicked() {
+        Some(false)
+    } else {
+        None
+    }
+}
+
+/// Sezione della palette esplicita: `+` aggiunge il pennello corrente;
+/// click = usa il colore, destro = lo toglie dalla palette. Solo i
+/// colori espliciti finiscono qui: mai il trasparente né i grigi del
+/// falloff del pennello morbido.
+fn palette_section(ui: &mut egui::Ui, app: &mut PixelApp) {
+    if ui
+        .add(egui::Button::new(egui::RichText::new("+ colore corrente").small()))
+        .on_hover_text("Aggiunge il colore attuale alla palette del progetto")
+        .clicked()
+    {
+        app.add_to_palette();
+    }
+    let palette = app.palette_colors();
+    if palette.is_empty() {
+        ui.weak("vuota: dipingi con un centro pieno per aggiungerla");
+        return;
+    }
+    let mut picked = None;
+    let per_row = ((ui.available_width() / (SWATCH + 4.0)).floor() as usize).max(3);
+    for (chunk_index, chunk) in palette.chunks(per_row).enumerate() {
+        ui.horizontal(|ui| {
+            for (slot, &color) in chunk.iter().enumerate() {
+                let index = chunk_index * per_row + slot;
+                if let Some(remove) = swatch_click(ui, color, color == app.brush) {
+                    picked = Some((index, remove));
+                }
+            }
+        });
+    }
+    if let Some((index, remove)) = picked {
+        if remove {
+            app.remove_palette_color(index);
+        } else {
+            app.set_brush(palette[index]);
+        }
+    }
 }
 
 #[cfg(test)]

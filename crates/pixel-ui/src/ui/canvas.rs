@@ -27,6 +27,8 @@ pub fn show(app: &mut PixelApp, root: &mut egui::Ui, ctx: &egui::Context) {
 
             let (rect, response) =
                 ui.allocate_exact_size(ui.available_size(), egui::Sense::click_and_drag());
+            // Superficie visibile del canvas: la usa "Adatta" nella nav.
+            app.canvas_view_rect = Some(rect);
             let painter = ui.painter().with_clip_rect(rect);
 
             // ——— zoom con la rotella, ancorato al pixel sotto il cursore ———————
@@ -123,13 +125,17 @@ pub fn show(app: &mut PixelApp, root: &mut egui::Ui, ctx: &egui::Context) {
                 );
             }
 
-            let painting = response.dragged_by(egui::PointerButton::Primary)
+            // Disegno: il tasto sinistro dipinge con lo strumento scelto
+            // (penna o gomma), il tasto destro è una gomma rapida; tenere
+            // premuto il destro durante un tratto col sinistro cancella.
+            let left_stroke = response.dragged_by(egui::PointerButton::Primary)
                 || response.clicked_by(egui::PointerButton::Primary);
+            let right_stroke = response.dragged_by(egui::PointerButton::Secondary)
+                || response.clicked_by(egui::PointerButton::Secondary);
             let erasing = ctx.input(|i| i.pointer.secondary_down());
-            if painting {
-                // Pulsante destro = gomma rapida; altrimenti comanda lo
-                // strumento scelto nel pannello Colori (penna o gomma).
-                let erase = erasing || app.brush_mode == BrushMode::Eraser;
+            let drawing = left_stroke || right_stroke;
+            if drawing {
+                let erase = right_stroke || erasing || app.brush_mode == BrushMode::Eraser;
                 if let Some(cell) = pixel {
                     app.paint_line(cell, erase);
                 }

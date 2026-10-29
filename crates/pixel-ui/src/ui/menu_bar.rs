@@ -60,6 +60,10 @@ fn show_file_menu(app: &mut PixelApp, ui: &mut egui::Ui, ctx: &egui::Context) {
             app.action_open();
         }
         ui.separator();
+        if ui.button("Importa immagine…").clicked() {
+            app.action_import_image();
+        }
+        ui.separator();
         if ui.button("Salva").clicked() {
             app.save_if_path();
         }
@@ -72,6 +76,10 @@ fn show_file_menu(app: &mut PixelApp, ui: &mut egui::Ui, ctx: &egui::Context) {
         }
         if ui.button("Esporta ZIP (tutti i frame)…").clicked() {
             app.action_export_zip();
+        }
+        ui.separator();
+        if ui.button("Homepage").clicked() {
+            app.go_home();
         }
         ui.separator();
         if ui.button("Esci").clicked() {
@@ -117,47 +125,27 @@ fn show_animation_menu(app: &mut PixelApp, ui: &mut egui::Ui) {
             project.set_fps(fps);
             app.mark_dirty();
         }
+        if ui.button("Anteprima a schermo intero").clicked() {
+            app.fullscreen_preview = true;
+        }
         ui.separator();
-        // Aggiungi / duplica / elimina frame, con il progetto mutato una
-        // volta sola per bottone.
+        // L'azione sono metodi centralizzati di PixelApp: pensano anche
+        // a salvataggio/texture, senza ripetere la logica qui.
         if ui.button("Aggiungi frame vuoto").clicked() {
-            if let Some(project) = app.project.as_mut() {
-                let _index = project.add_frame(false);
-                app.mark_dirty();
-            }
+            app.frame_add(false);
         }
         if ui.button("Duplica frame attivo").clicked() {
-            if let Some(project) = app.project.as_mut() {
-                let _index = project.add_frame(true);
-                app.mark_dirty();
-            }
+            app.frame_add(true);
         }
         if ui.button("Elimina frame attivo").clicked() {
-            if let Some(project) = app.project.as_mut() {
-                let index = project.active_frame_index();
-                if project.remove_frame(index) {
-                    app.mark_dirty();
-                }
-            }
+            app.frame_delete_active();
         }
         ui.separator();
         if ui.button("Frame precedente").clicked() {
-            if let Some(project) = app.project.as_mut()
-                && project.active_frame_index() > 0
-            {
-                let index = project.active_frame_index() - 1;
-                let _ = project.set_active_frame(index);
-                app.mark_dirty();
-            }
+            app.frame_move(-1);
         }
         if ui.button("Frame successivo").clicked() {
-            if let Some(project) = app.project.as_mut()
-                && project.active_frame_index() + 1 < project.frame_count()
-            {
-                let index = project.active_frame_index() + 1;
-                let _ = project.set_active_frame(index);
-                app.mark_dirty();
-            }
+            app.frame_move(1);
         }
     });
 }

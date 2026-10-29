@@ -6,6 +6,8 @@ use crate::{color::Rgba, error::PixelError, frame::Frame};
 
 /// FPS predefinito dell'anteprima (usato pure come durata di default).
 const DEFAULT_FPS: f32 = 12.0;
+/// Numero massimo di colori conservati nella palette del progetto.
+pub const PALETTE_LIMIT: usize = 128;
 
 /// Progetto pixel-art/tileset: dimensioni, sequence di frame, fps e indice
 /// del frame attivo.
@@ -20,6 +22,13 @@ pub struct Project {
     fps: f32,
     active_frame: usize,
     frames: Vec<Frame>,
+    /// Colori espliciti del progetto: solo quelli scelti finalmente
+    /// dall'utente (o usati a opacità piena). Le tinte intermedie
+    /// generate dal falloff del pennello morbido non finiscono qui, per
+    /// non riempire la palette di grigi inutili; il trasparente è già
+    /// disegnabile di default e non viene mai inserito.
+    #[serde(default)]
+    palette: Vec<Rgba>,
 }
 
 impl Project {
@@ -44,6 +53,7 @@ impl Project {
             fps: sanitize_fps(fps),
             active_frame: 0,
             frames: vec![frame],
+            palette: Vec::new(),
         })
     }
 
@@ -160,6 +170,55 @@ impl Project {
         true
     }
 
+    /// Sposta un frame da `from` a `to`; gli indici in mezzo shiftano e il
+    /// frame attivo segue la sua posizione. `false` se gli indici sono
+    /// fuori range o coincidenti.
+    pub fn move_frame(&mut self, from: usize, to: usize) -> bool {
+        if from >= self.frames.len() || to >= self.frames.len() || from == to {
+            return false;
+        }
+        let frame = self.frames.remove(from);
+        self.frames.insert(to, frame);
+        self.active_frame = if self.active_frame == from {
+            to
+        } else if from < self.active_frame && self.active_frame <= to {
+            self.active_frame - 1
+        } else if to <= self.active_frame && self.active_frame < from {
+            self.active_frame + 1
+        } else {
+            self.active_frame
+        };
+        true
+    }
+
+    /// Colori espliciti del progetto, in ordine d'inserzione.
+    #[must_use]
+    pub fn palette(&self) -> &[Rgba] {
+        &self.palette
+    }
+
+    /// Aggiunge un colore alla palette del progetto (dedup, niente
+    /// trasparente, cap a [`PALETTE_LIMIT`]). `true` se inserito.
+    pub fn push_palette(&mut self, color: Rgba) -> bool {
+        if color.is_transparent() || self.palette.contains(&color) {
+            return false;
+        }
+        if self.palette.len() >= PALETTE_LIMIT {
+            return false;
+        }
+        self.palette.push(color);
+        true
+    }
+
+    /// Rimuove il colore `index` dalla palette. `false` se fuori range.
+    pub fn remove_palette(&mut self, index: usize) -> bool {
+        if index >= self.palette.len() {
+            return false;
+        }
+        self.palette.remove(index);
+        true
+    }
+
     /// Imposta un pixel sul frame attivo.
     pub fn set_pixel(&mut self, x: u32, y: u32, color: Rgba) -> bool {
         self.active_frame_mut().grid_mut().set_pixel(x, y, color)
@@ -254,6 +313,41 @@ mod tests {
             Err(PixelError::InvalidFrameIndex { index: 5, count: 1 })
         ));
         assert!(!project.set_pixel_on_frame(Some(7), 0, 0, Rgba::rgb(1, 1, 1)));
+    }
+
+    #[test]
+    fn move_frame_follows_active() {
+        let mut project = Project::new("demo", 4, 4).unwrap();
+        project.add_frame(false);
+        project.add_frame(false);
+        project.add_frame(false); // 4 frame
+        project.set_active_frame(0).unwrap();
+        // Sposta il frame 0 in fondo: chi era in mezzo scala indietro per
+        // occupare lo spazio liberato.
+        assert!(project.move_frame(0, 3));
+        assert_eq!(project.frame_count(), 4);
+        assert_eq!(project.active_frame_index(), 3);
+        project.set_active_frame(1).unwrap();
+        assert!(project.move_frame(3, 0));
+        assert_eq!(project.active_frame_index(), 2); // il vecchio 1 ora è 2
+        // Indici curiosi o fuori range non rompono nulla.
+        assert!(!project.move_frame(2, 2));
+        assert!(!project.move_frame(0, 9));
+    }
+
+    #[test]
+    fn palette_only_explicit_colors() {
+        let mut project = Project::new("demo", 4, 4).unwrap();
+        assert!(project.palette().is_empty());
+        assert!(project.push_palette(Rgba::rgb(255, 0, 0)));
+        // Duplicato e trasparente non entrano; il trasparente è già
+        // il default della griglia, non va "ricordato".
+        assert!(!project.push_palette(Rgba::rgb(255, 0, 0)));
+        assert!(!project.push_palette(Rgba::TRANSPARENT));
+        assert_eq!(project.palette().len(), 1);
+        assert!(project.remove_palette(0));
+        assert!(!project.remove_palette(0));
+        assert!(project.palette().is_empty());
     }
 
     #[test]

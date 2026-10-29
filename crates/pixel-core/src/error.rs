@@ -27,4 +27,9 @@ pub enum PixelError {
     /// Indice frame fuori range rispetto ai frame correnti.
     #[error("indice frame {index} fuori range (frame presenti: {count})")]
     InvalidFrameIndex { index: usize, count: usize },
+
+    /// Il file immagine da pixellare non è leggibile o non è un formato
+    /// supportato da `image` (tra PNG e JPEG).
+    #[error("immagine non leggibile: {0}")]
+    Image(#[from] image::ImageError),
 }

@@ -22,6 +22,7 @@
 pub mod brush;
 pub mod color;
 pub mod error;
+pub mod pixelate;
 pub mod export;
 pub mod frame;
 pub mod grid;

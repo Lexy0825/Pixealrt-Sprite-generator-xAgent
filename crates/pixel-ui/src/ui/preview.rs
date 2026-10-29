@@ -1,15 +1,13 @@
-//! Pannello laterale: anteprima in tempo reale dell'animazione.
+//! Anteprima dell'animazione: sezione del dock e modale a schermo intero.
 
 use eframe::egui;
 use pixel_core::{Grid, Project};
 
 use crate::app::PixelApp;
-use crate::ui;
+use crate::ui::{ACCENT, CANVAS_BG, CHECKER_A, CHECKER_B, WEAK_TEXT};
 
-/// Dimensione massima della grande immagine d'anteprima.
-const PREVIEW_SIZE: f32 = 260.0;
-/// Lato dei thumbnail nella striscia dei frame.
-const THUMB_SIZE: f32 = 64.0;
+/// Lato massimo del player nella sezione del dock.
+const PREVIEW_SIZE: f32 = 236.0;
 
 /// Stato dell'anteprima: riproduzione, testina del tempo e texture
 /// ricalcolata solo quando serve.
@@ -55,6 +53,11 @@ impl PreviewState {
         }
         self.shown_frame = frame_at_time(project, self.playhead_ms);
     }
+
+    /// Ultimo frame disegnato (per i contatori).
+    pub const fn shown_frame(&self) -> usize {
+        self.shown_frame
+    }
 }
 
 /// Frame visibile a `playhead_ms`, sommando le durate dei frame.
@@ -68,112 +71,117 @@ fn frame_at_time(project: &Project, mut playhead_ms: f32) -> usize {
     project.frame_count().saturating_sub(1)
 }
 
-pub fn show(app: &mut PixelApp, root: &mut egui::Ui) {
-    // Texture dell'anteprima costruita fuori dal pannello: così i borrow di
-    // `preview` (texture) e di `project` (dati) restano sequenziali.
+/// Contenuto della sezione "Anteprima" del dock: player grande, fps e
+/// play/pausa. La striscia dei frame resta nella sezione "Frame".
+pub fn preview_content(ui: &mut egui::Ui, app: &mut PixelApp) {
     let shown = app.preview.shown_frame;
     let rev = app.content_rev();
-    let ctx = root.ctx();
+    let ctx = ui.ctx().clone();
     let project = app.project.as_ref();
-    let preview = &mut app.preview;
-    ensure_preview_texture(ctx, preview, project, shown, rev);
+    ensure_preview_texture(&ctx, &mut app.preview, project, shown, rev);
     let preview_texture = app.preview.texture.clone();
     let playing = app.preview.playing;
 
-    egui::Panel::right("preview_panel")
-        .default_size(320.0)
-        .resizable(true)
+    ui.add_space(6.0);
+    ui.horizontal(|ui| {
+        let label = if playing { "Pausa" } else { "Riproduci" };
+        if ui.button(label).clicked() {
+            app.preview.toggle();
+        }
+        let mut fps = app.project.as_ref().map_or(12.0, |p| p.fps());
+        let fps_edit = ui.add(
+            egui::DragValue::new(&mut fps)
+                .range(1.0..=60.0)
+                .suffix(" fps"),
+        );
+        if fps_edit.changed()
+            && let Some(project) = app.project.as_mut()
+        {
+            project.set_fps(fps);
+            app.mark_dirty();
+        }
+    });
+    ui.add_space(6.0);
+
+    if let Some(tex) = preview_texture {
+        let dims = tex.size_vec2();
+        let scale = (PREVIEW_SIZE / dims.max_elem()).min(3.0);
+        let size = dims * scale;
+        let (rect, _response) = ui.allocate_exact_size(size, egui::Sense::hover());
+        draw_player_backdrop(ui, rect);
+        ui.painter().image(
+            tex.id(),
+            rect,
+            egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
+            egui::Color32::WHITE,
+        );
+    }
+    let frame_count = app.project.as_ref().map_or(0, Project::frame_count);
+    let stato = if playing { "in riproduzione" } else { "attivo" };
+    ui.label(
+        egui::RichText::new(format!(
+            "frame {}/{} — {stato}",
+            app.preview.shown_frame(),
+            frame_count
+        ))
+        .small()
+        .color(WEAK_TEXT),
+    );
+}
+
+/// Anteprima a schermo intero (modale): niente menu n pannelli, il
+/// player occupa tutto lo schermo e `Esc`/click chiude (gestito in app).
+pub fn fullscreen_preview(app: &mut PixelApp, root: &mut egui::Ui) {
+    let ctx = root.ctx().clone();
+    let shown = app.preview.shown_frame;
+    let rev = app.content_rev();
+    let project = app.project.as_ref();
+    ensure_preview_texture(&ctx, &mut app.preview, project, shown, rev);
+    let preview_texture = app.preview.texture.clone();
+    let playing = app.preview.playing;
+
+    egui::CentralPanel::default()
+        .frame(egui::Frame::default().fill(CANVAS_BG))
         .show(root, |ui| {
-            ui.add_space(8.0);
-            ui.strong("Anteprima");
-            ui.add_space(6.0);
-
-            // ——— controlli riproduzione e fps —————————————————————————————
-            ui.horizontal(|ui| {
-                let label = if playing { "Pausa" } else { "Riproduci" };
-                if ui.button(label).clicked() {
-                    app.preview.toggle();
+            ui.vertical_centered(|ui| {
+                ui.add_space(28.0);
+                if let Some(tex) = preview_texture {
+                    let available = ui.available_size();
+                    let dims = tex.size_vec2();
+                    let scale = (available.x * 0.92 / dims.x)
+                        .min(available.y * 0.80 / dims.y);
+                    let size = dims * scale;
+                    let (rect, _response) =
+                        ui.allocate_exact_size(size, egui::Sense::hover());
+                    draw_player_backdrop(ui, rect);
+                    ui.painter().image(
+                        tex.id(),
+                        rect,
+                        egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
+                        egui::Color32::WHITE,
+                    );
+                } else {
+                    ui.weak("nessun progetto da mostrare");
                 }
-                let mut fps = app.project.as_ref().map_or(12.0, |p| p.fps());
-                let fps_edit = ui.add(
-                    egui::DragValue::new(&mut fps)
-                        .range(10.0..=60.0)
-                        .suffix(" fps"),
-                );
-                if fps_edit.changed()
-                    && let Some(project) = app.project.as_mut()
-                {
-                    project.set_fps(fps);
-                    app.mark_dirty();
-                }
-            });
-            ui.add_space(6.0);
-
-            // ——— grande immagine d'anteprima del frame mostrato ————————————
-            if let Some(tex) = preview_texture {
-                let dims = tex.size_vec2();
-                let scale = (PREVIEW_SIZE / dims.max_elem()).min(3.0);
-                let size = dims * scale;
-                let (rect, _response) = ui.allocate_exact_size(size, egui::Sense::hover());
-                draw_mini_checker(ui.painter(), rect);
-                ui.painter().image(
-                    tex.id(),
-                    rect,
-                    egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
-                    egui::Color32::WHITE,
-                );
-            }
-            let frame_count = app.project.as_ref().map_or(0, Project::frame_count);
-            let stato = if playing { "in riproduzione" } else { "attivo" };
-            ui.label(
-                egui::RichText::new(format!(
-                    "frame {}/{} — {stato}",
-                    shown + 1,
-                    frame_count
-                ))
-                .small(),
-            );
-
-            ui.add_space(10.0);
-            ui.strong("Frame");
-            ui.add_space(4.0);
-
-            // ——— striscia orizzontale dei frame, clic per selezionarli ————
-            let mut goto: Option<usize> = None;
-            let active = app.project.as_ref().map_or(0, |p| p.active_frame_index());
-            let project = app.project.clone();
-            egui::ScrollArea::horizontal().show(ui, |ui| {
+                ui.add_space(12.0);
                 ui.horizontal(|ui| {
-                    if let Some(project) = project {
-                        for index in 0..project.frame_count() {
-                            let (rect, response) = ui.allocate_exact_size(
-                                egui::vec2(THUMB_SIZE, THUMB_SIZE),
-                                egui::Sense::click(),
-                            );
-                            if response.clicked() {
-                                goto = Some(index);
-                            }
-                            draw_thumbnail(
-                                ui,
-                                rect,
-                                project.frame(index).map(|frame| frame.grid()),
-                                index == active,
-                            );
-                            ui.label(
-                                egui::RichText::new(index.to_string())
-                                    .weak()
-                                    .small(),
-                            );
-                        }
+                    let label = if playing { "Pausa" } else { "Riproduci" };
+                    if ui.button(label).clicked() {
+                        app.preview.toggle();
+                    }
+                    if ui.button("Esci (Esc)").clicked() {
+                        app.fullscreen_preview = false;
                     }
                 });
+                ui.label(
+                    egui::RichText::new(format!(
+                        "frame {}/{}",
+                        app.preview.shown_frame(),
+                        app.project.as_ref().map_or(0, Project::frame_count)
+                    ))
+                    .color(WEAK_TEXT),
+                );
             });
-            if let Some(index) = goto {
-                if let Some(project) = app.project.as_mut() {
-                    let _ = project.set_active_frame(index);
-                }
-                app.mark_dirty();
-            }
         });
 }
 
@@ -213,22 +221,20 @@ fn ensure_preview_texture(
     state.built_rev = rev;
 }
 
-/// Thumbnail di un frame: sfondo scuro, contorno più corposo se attivo.
-fn draw_thumbnail(ui: &egui::Ui, rect: egui::Rect, grid: Option<&Grid>, is_active: bool) {
+/// Thumbnail di un frame: sfondo scuro, contorno pi corposo se attivo.
+pub fn draw_frame_thumb(ui: &egui::Ui, rect: egui::Rect, grid: &Grid, is_active: bool) {
     let painter = ui.painter();
     let bg = if is_active {
-        ui::ACCENT.gamma_multiply(0.20)
+        ACCENT.gamma_multiply(0.20)
     } else {
-        ui::CHECKER_B
+        CHECKER_B
     };
     painter.rect_filled(rect, 4.0, bg);
     let stroke = egui::Stroke::new(
         if is_active { 2.0 } else { 0.5 },
-        if is_active { ui::ACCENT } else { ui::GRID_LINE },
+        if is_active { ACCENT } else { crate::ui::GRID_LINE },
     );
     painter.rect_stroke(rect, 4.0, stroke, egui::StrokeKind::Middle);
-
-    let Some(grid) = grid else { return };
     let (w, h) = grid.dimensions();
     let cell = egui::vec2(rect.width() / w as f32, rect.height() / h as f32);
     for (index, color) in grid.pixels().iter().enumerate() {
@@ -246,24 +252,19 @@ fn draw_thumbnail(ui: &egui::Ui, rect: egui::Rect, grid: Option<&Grid>, is_activ
     }
 }
 
-/// Scacchiera in miniatura sotto l'immagine d'anteprima per far leggere la
-/// trasparenza anche lì.
-fn draw_mini_checker(painter: &egui::Painter, rect: egui::Rect) {
+/// Sfondo del player: scacchiera neutra sotto i pixel trasparenti.
+fn draw_player_backdrop(ui: &egui::Ui, rect: egui::Rect) {
     let cell = 8.0;
     let cols = (rect.width() / cell).ceil() as i32;
     let rows = (rect.height() / cell).ceil() as i32;
     for y in 0..rows {
         for x in 0..cols {
-            let color = if (x + y) % 2 == 0 {
-                ui::CHECKER_A
-            } else {
-                ui::CHECKER_B
-            };
+            let color = if (x + y) % 2 == 0 { CHECKER_A } else { CHECKER_B };
             let piece = egui::Rect::from_min_size(
                 rect.min + egui::vec2(x as f32, y as f32) * cell,
                 egui::vec2(cell, cell),
             );
-            painter.rect_filled(piece, 0.0, color);
+            ui.painter().rect_filled(piece, 0.0, color);
         }
     }
 }

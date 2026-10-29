@@ -14,7 +14,9 @@ use std::path::Path;
 
 use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD as BASE64;
-use pixel_core::{PixelError, Project, Rgba, export as core_export, project_json};
+use pixel_core::{
+    PixelError, Project, Rgba, export as core_export, frame::Frame, pixelate, project_json,
+};
 use rmcp::handler::server::wrapper::Parameters;
 use rmcp::{ErrorData as McpError, schemars, tool, tool_router};
 
@@ -178,6 +180,16 @@ pub struct ExportZipParams {
     pub path: String,
     /// File ZIP di destinazione (frame_0000.png, ... + metadata.json).
     pub out: String,
+}
+
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+pub struct ImportImageParams {
+    pub path: String,
+    /// Immagine sorgente (PNG/JPEG) da pixellare sul frame attivo.
+    pub image: String,
+    /// Frame 0-based su cui pixelare; assente = frame attivo.
+    #[serde(default)]
+    pub frame: Option<usize>,
 }
 
 // ——— definizione del servizio: router + ServerHandler in una volta ———————————
@@ -367,6 +379,32 @@ impl PixelService {
             project.frame_count(),
         ))
     }
+
+    #[tool(description = "Pixella un'immagine (PNG/JPEG) sul frame: l'immagine è adattata dentro la griglia del progetto senza deformarla (fit uniforme + letterbox) e ogni cella prende il colore dominante della sua regione. `frame` opzionale; senza si usa il frame attivo. L'immagine fa da spunto: tutte le celle restano modificabili a mano.")]
+    fn import_image(
+        &self,
+        Parameters(ImportImageParams { path, image, frame }): Parameters<ImportImageParams>,
+    ) -> Result<String, McpError> {
+        let mut project = load_project(&path)?;
+        let target = frame.unwrap_or(project.active_frame_index());
+        if project.frame(target).is_none() {
+            return Err(McpError::internal_error(
+                format!(
+                    "frame {target} inesistente (frame presenti: {})",
+                    project.frame_count()
+                ),
+                None,
+            ));
+        }
+        let grid = project.frame_mut(Some(target)).map(Frame::grid_mut).expect("frame verificato subito sopra");
+        let summary =
+            pixelate::pixelate_from_path(grid, Path::new(&image)).map_err(mcp_error)?;
+        save_project(&project, &path)?;
+        Ok(format!(
+            "pixellato `{image}` sul frame {target} di `{path}`: {} celle con colore dominante, {} celle trasparenti (letterbox)",
+            summary.cells_filled, summary.cells_transparent
+        ))
+    }
 }
 
 #[cfg(test)]
@@ -525,6 +563,54 @@ mod tests {
             .unwrap();
         assert!(png.exists() && png.metadata().unwrap().len() > 0);
         assert!(zip.exists() && zip.metadata().unwrap().len() > 0);
+    }
+
+    #[test]
+    fn import_image_pixelates_the_frame() {
+        let service = PixelService::new();
+        let dir = tempdir("img");
+        let project_path = dir.join("pixel.pixproj");
+        let path = project_path.display().to_string();
+        service
+            .create_project(Parameters(CreateProjectParams {
+                path: path.clone(),
+                name: None,
+                width: 2,
+                height: 2,
+                fps: None,
+            }))
+            .unwrap();
+
+        // Sorgente 4x4: il quadrato sinistro rosso opaco, quello destro
+        // trasparente: sul frame aspettata colonna di sinistra dominante
+        // rossa, quella destra trasparente (letterbox senza pixel visibili).
+        let file_path = dir.join("src.png");
+        let img = image::RgbaImage::from_fn(4, 4, |x, _| {
+            if x < 2 {
+                image::Rgba([255, 0, 0, 255])
+            } else {
+                image::Rgba([255, 255, 255, 0])
+            }
+        });
+        img.save(&file_path).unwrap();
+
+        let result = service
+            .import_image(Parameters(ImportImageParams {
+                path: path.clone(),
+                image: file_path.display().to_string(),
+                frame: None,
+            }))
+            .unwrap();
+        assert!(result.contains("2 celle con colore dominante"), "responso atteso: {result}");
+
+        let loaded = project_json::load(&project_path).unwrap();
+        let grid = loaded.active_frame().grid();
+        // Ogni cella della griglia copre metà immagine: la colonna x=0
+        // è tutta rosso, la x=1 copre la metà trasparente → resta vuo.
+        assert_eq!(grid.get_pixel(0, 0), Some(Rgba::rgb(255, 0, 0)));
+        assert_eq!(grid.get_pixel(0, 1), Some(Rgba::rgb(255, 0, 0)));
+        assert!(grid.get_pixel(1, 0).unwrap().is_transparent());
+        assert!(grid.get_pixel(1, 1).unwrap().is_transparent());
     }
 
     #[test]

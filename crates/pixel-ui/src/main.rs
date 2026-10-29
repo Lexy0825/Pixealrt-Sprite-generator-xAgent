@@ -7,6 +7,7 @@
 //! cambi esterni (dell'AI) vengono ricaricati automaticamente.
 
 mod app;
+mod recents;
 mod ui;
 
 fn main() -> eframe::Result<()> {

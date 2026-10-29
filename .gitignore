@@ -7,3 +7,4 @@
 /freebuff-project-id
 !.github/**
 !docs/*.png
+!on_doc/img/*.png

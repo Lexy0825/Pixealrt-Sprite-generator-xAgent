@@ -2,8 +2,11 @@
 
 pub mod canvas;
 pub mod colors;
+pub mod dock;
+pub mod home;
 pub mod menu_bar;
 pub mod preview;
+pub mod topbar;
 
 use eframe::egui;
 
