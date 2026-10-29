@@ -10,6 +10,9 @@ mod app;
 mod ui;
 
 fn main() -> eframe::Result<()> {
+    // `pixel-ui [progetto.pixproj]`: apre direttamente il file condiviso col
+    // server MCP passato da riga di comando (comodo anche per i test).
+    let startup_path = std::env::args().nth(1).map(std::path::PathBuf::from);
     let options = eframe::NativeOptions {
         viewport: eframe::egui::ViewportBuilder::default()
             .with_title("Pixel Studio")
@@ -20,6 +23,6 @@ fn main() -> eframe::Result<()> {
     eframe::run_native(
         "pixel-studio",
         options,
-        Box::new(|cc| Ok(Box::new(app::PixelApp::new(cc)))),
+        Box::new(move |cc| Ok(Box::new(app::PixelApp::new(cc, startup_path)))),
     )
 }

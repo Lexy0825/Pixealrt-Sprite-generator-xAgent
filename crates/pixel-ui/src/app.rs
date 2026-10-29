@@ -71,14 +71,28 @@ pub struct PixelApp {
 
 impl PixelApp {
     #[must_use]
-    pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
+    pub fn new(cc: &eframe::CreationContext<'_>, startup_path: Option<PathBuf>) -> Self {
         ui::apply_theme(&cc.egui_ctx);
-        // Si apre con un progetto pronto; la griglia nuova è tutta
-        // trasparente e la scacchiera dice visivamente "qui si disegna".
-        let project = Project::new("progetto senza nome", 32, 32).ok();
-        Self {
+        // Se un file progetto è stato passato da CLI si apre quello:
+        // è il canale per condividere subito lo stato con il server MCP.
+        let (project, path, load_error) = match &startup_path {
+            Some(file) => match project_json::load(file) {
+                Ok(project) => (Some(project), Some(file.clone()), None),
+                Err(err) => {
+                    eprintln!("apertura file avviato fallita: {err}");
+                    (Project::new("progetto senza nome", 32, 32).ok(), None, Some(err))
+                }
+            },
+            // Senza file: progetto pronto; la griglia nuova è tutta
+            // trasparente e la scacchiera dice visivamente "qui si disegna".
+            None => (Project::new("progetto senza nome", 32, 32).ok(), None, None),
+        };
+        if let Some(err) = load_error {
+            eprintln!("progetto di partenza: {err}");
+        }
+        let mut app = Self {
             project,
-            path: None,
+            path,
             dirty: false,
             save_deadline: None,
             watched_mtime: None,
@@ -96,7 +110,9 @@ impl PixelApp {
             texture_frame: None,
             texture_rev: 0,
             content_rev: 0,
-        }
+        };
+        app.sync_watch();
+        app
     }
 
     // ——— mutazione + autosave —————————————————————————————————————————————
@@ -128,14 +144,14 @@ impl PixelApp {
         let (x0, y0) = self.last_paint_cell.unwrap_or(cell);
         let dx = i32::from(x1 as i32) - i32::from(x0 as i32);
         let dy = i32::from(y1 as i32) - i32::from(y0 as i32);
-        let steps = dx.abs().max(dy.abs()).min(u32::MAX as i32) as u32;
+        let denom = (stroke_steps(dx, dy) as i32).max(1);
         // Dalle coordinate u32 ai pass interpolati, riquadrato in-bounds.
         let Some(project) = self.project.as_mut() else {
             return;
         };
-        for step in 0..=steps {
-            let x = x0 as i32 + dx * step as i32 / (steps as i32).max(1);
-            let y = y0 as i32 + dy * step as i32 / (steps as i32).max(1);
+        for step in 0..=stroke_steps(dx, dy) {
+            let x = x0 as i32 + dx * step as i32 / denom;
+            let y = y0 as i32 + dy * step as i32 / denom;
             if x >= 0 && y >= 0 {
                 project.set_pixel(x as u32, y as u32, color);
             }
@@ -196,7 +212,7 @@ impl PixelApp {
         if Some(mtime) == self.watched_mtime {
             return;
         }
-        // Il file è diverso da come l'abbiamo lasciato: prima salviamo le
+        // Il file è diverso da come l'abbiamo lasciate: prima salviamo le
         // modifiche pendenti, poi il nuovo contenuto viene adottato.
         if self.dirty && self.save_if_path() {
             self.sync_watch();
@@ -379,11 +395,15 @@ impl eframe::App for PixelApp {
         ui::preview::show(self, root);
         ui::canvas::show(self, root, &ctx);
 
-        // Con l'animazione in riproduzione il repaint è a cadenza fissa;
-        // in pausa egui non ridisegna e non sprechiamo CPU.
-        if self.preview.playing {
-            ctx.request_repaint_after(Duration::from_secs_f64(1.0 / 60.0));
-        }
+        // L'animazione in riproduzione vuole repaint a 60 Hz; in pausa
+        // manteniamo comunque un tick lento (500 ms): serve a far girare il
+        // polling del file condiviso anche quando l'utente non tocca nulla —
+        // senza tick, egui inattivo non esegue pass e l'AI sembrerebbe muta.
+        ctx.request_repaint_after(if self.preview.playing {
+            Duration::from_secs_f64(1.0 / 60.0)
+        } else {
+            Duration::from_millis(500)
+        });
     }
 }
 
@@ -393,4 +413,28 @@ fn log_error(err: &PixelError) {
 
 fn log_done(path: &std::path::Path) {
     eprintln!("esportato: {}", path.display());
+}
+
+/// Numero di passi del tratteggio per la differenza (dx, dy) fra due celle.
+///
+/// Con `unsigned_abs`: `(-1) as u32` sarebbe `u32::MAX` e un click fermo
+/// trasformerebbe il loop in miliardi d'iterazioni (congelamento UI).
+fn stroke_steps(dx: i32, dy: i32) -> u32 {
+    dx.unsigned_abs().max(dy.unsigned_abs())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::stroke_steps;
+
+    /// Un click fermo (delta 0) e un trascinamento normale: pochissimi
+    /// passi. Con il bug storico dello scroll-as-u32 qui si sarebbero
+    /// visti 4 294 967 295 passi (loop infinito-praticamente) e la
+    /// prova pratica era una finestra "Non risponde".
+    #[test]
+    fn stroke_steps_never_explodes() {
+        assert_eq!(stroke_steps(0, 0), 0); // click fermo
+        assert_eq!(stroke_steps(3, -4), 4); // tratto corto in diagonale
+        assert_eq!(stroke_steps(-60, 40), 60); // attraversamento di mezza griglia
+    }
 }

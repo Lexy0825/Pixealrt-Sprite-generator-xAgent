@@ -128,10 +128,9 @@ pub fn show(app: &mut PixelApp, root: &mut egui::Ui, ctx: &egui::Context) {
                 || response.clicked_by(egui::PointerButton::Primary);
             let erasing = ctx.input(|i| i.pointer.secondary_down());
             if painting {
-                let color = if erasing { Rgba::TRANSPARENT } else { app.brush };
-                if let Some(cell) = pixel {
-                    app.paint_line(cell, color);
-                }
+                let color = if erasing { Rgba::TRANSPARENT } else { app.brush };                    if let Some(cell) = pixel {
+                        app.paint_line(cell, color);
+                    }
             } else {
                 app.last_paint_cell = None;
             }
