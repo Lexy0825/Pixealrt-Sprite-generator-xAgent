@@ -1,9 +1,8 @@
 //! Canvas centrale: disegno, scacchiera di trasparenza, zoom e pan.
 
 use eframe::egui;
-use pixel_core::Rgba;
 
-use crate::app::PixelApp;
+use crate::app::{BrushMode, PixelApp};
 use crate::ui::{ACCENT, CANVAS_BG, CHECKER_A, CHECKER_B, GRID_LINE, TEXT};
 
 /// Zoom compreso fra 1 (1:1) e 32 ingrandimenti.
@@ -128,9 +127,12 @@ pub fn show(app: &mut PixelApp, root: &mut egui::Ui, ctx: &egui::Context) {
                 || response.clicked_by(egui::PointerButton::Primary);
             let erasing = ctx.input(|i| i.pointer.secondary_down());
             if painting {
-                let color = if erasing { Rgba::TRANSPARENT } else { app.brush };                    if let Some(cell) = pixel {
-                        app.paint_line(cell, color);
-                    }
+                // Pulsante destro = gomma rapida; altrimenti comanda lo
+                // strumento scelto nel pannello Colori (penna o gomma).
+                let erase = erasing || app.brush_mode == BrushMode::Eraser;
+                if let Some(cell) = pixel {
+                    app.paint_line(cell, erase);
+                }
             } else {
                 app.last_paint_cell = None;
             }

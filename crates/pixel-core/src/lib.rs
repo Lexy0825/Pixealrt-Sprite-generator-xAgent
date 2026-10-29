@@ -8,6 +8,7 @@
 //! - [`grid::Grid`]: griglia `width × height`, tutto trasparente di default,
 //!   con conversione bounds-checked.
 //! - [`frame::Frame`]: un fotogramma (griglia + durata in millisecondi).
+//! - [`brush`]: impronta penna dura/morbida e gomma sulla griglia,
 //! - [`project::Project`]: progetto multi-frame (nome, dimensioni, fps,
 //!   frame attivo).
 //! - [`project_json`]: persistenza su disco come JSON versione 1, con
@@ -18,6 +19,7 @@
 //!
 //! Tutti i tipi sono `Send + Sync`-friendly e serializzabili con `serde`.
 
+pub mod brush;
 pub mod color;
 pub mod error;
 pub mod export;

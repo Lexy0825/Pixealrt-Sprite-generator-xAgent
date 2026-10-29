@@ -188,7 +188,7 @@ mod tests {
 
         let file = File::open(&out).unwrap();
         let mut zip = zip::ZipArchive::new(file).unwrap();
-        let mut names: Vec<String> = zip
+        let names: Vec<String> = zip
             .file_names()
             .map(|name| name.unwrap().into_owned())
             .collect();

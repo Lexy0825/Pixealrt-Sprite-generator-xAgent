@@ -1,6 +1,7 @@
 //! Moduli dell'interfaccia e tema visivo dell'app.
 
 pub mod canvas;
+pub mod colors;
 pub mod menu_bar;
 pub mod preview;
 

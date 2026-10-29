@@ -12,7 +12,7 @@ use std::path::PathBuf;
 use std::time::{Duration, Instant, SystemTime};
 
 use eframe::egui;
-use pixel_core::{PixelError, Project, Rgba, project_json};
+use pixel_core::{brush, PixelError, Project, Rgba, project_json};
 
 use crate::ui;
 
@@ -20,6 +20,20 @@ use crate::ui;
 const AUTOSAVE_DEBOUNCE: Duration = Duration::from_millis(400);
 /// Quanto resta visibile l'avviso di "aggiornato dall'esterno".
 const EXTERNAL_NOTICE: Duration = Duration::from_secs(4);
+/// Massimo di colori ricordati nella palette "recenti".
+pub const RECENT_LIMIT: usize = 16;
+/// Massimo di swatch estratti dal progetto per la palette.
+const PALETTE_LIMIT: usize = 64;
+
+/// Strumento attivo: la gomma cancella, la penna dipinge con `brush`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum BrushMode {
+    /// Penna: dipinge del colore `brush` (falloff se `brush_soft`).
+    #[default]
+    Pen,
+    /// Gomma: rende trasparente il pixel (attenua i vicini se `brush_soft`).
+    Eraser,
+}
 
 /// Finestra modale "Nuovo progetto".
 #[derive(Debug, Default)]
@@ -45,6 +59,14 @@ pub struct PixelApp {
 
     // disegno / vista
     pub brush: Rgba,
+    /// Penna o gomma; la scelta incide sul pulsante sinistro del mouse.
+    pub brush_mode: BrushMode,
+    /// Tratto morbido: falloff sui vicini (penna) e attenuazione (gomma).
+    pub brush_soft: bool,
+    /// Colori usati di recente (testa = più recente), sessione corrente.
+    pub recent_colors: Vec<Rgba>,
+    /// Stato del selettore a ruota (hue/sat/val/alpha) sincronizzato col brush.
+    pub picker: ui::colors::ColorPickerState,
     pub zoom: f32,
     pub pan: egui::Vec2,
     pub show_checker: bool,
@@ -59,6 +81,9 @@ pub struct PixelApp {
     pub last_paint_cell: Option<(u32, u32)>,
 
     pub preview: ui::preview::PreviewState,
+
+    /// Cache della palette del progetto: `(content_rev, colori)`.
+    palette_cache: Option<(u64, Vec<Rgba>)>,
 
     /// Texture del canvas (frame attivo), ricostruita solo quando i pixel
     /// cambiano o cambia il frame selezionato.
@@ -98,6 +123,10 @@ impl PixelApp {
             watched_mtime: None,
             external_notice_until: None,
             brush: Rgba::rgb(232, 90, 62),
+            brush_mode: BrushMode::Pen,
+            brush_soft: true,
+            recent_colors: Vec::new(),
+            picker: ui::colors::ColorPickerState::default(),
             zoom: 14.0,
             pan: egui::Vec2::ZERO,
             show_checker: true,
@@ -106,17 +135,61 @@ impl PixelApp {
             ai_instructions_open: false,
             last_paint_cell: None,
             preview: ui::preview::PreviewState::default(),
+            palette_cache: None,
             texture: None,
             texture_frame: None,
             texture_rev: 0,
             content_rev: 0,
         };
         app.sync_watch();
+        // Il selettore parte allineato al colore iniziale del pennello.
+        app.picker.load_from(app.brush);
         app
     }
 
-    // ——— mutazione + autosave —————————————————————————————————————————————
+    /// Cambia il colore del pennello (palette, recenti, cursore esagonale):
+    /// tiene il selettore a ruota allineato ai canali RGB.
+    pub fn set_brush(&mut self, color: Rgba) {
+        self.brush = color;
+        self.picker.load_from(color);
+    }
 
+    /// Inserisce un colore in testa ai recenti senza duplicati consecutivi.
+    pub fn push_recent(&mut self, color: Rgba) {
+        if color.is_transparent() {
+            return;
+        }
+        self.recent_colors.retain(|&c| c != color);
+        self.recent_colors.insert(0, color);
+        self.recent_colors.truncate(RECENT_LIMIT);
+    }
+
+    /// Colori distinti (alpha > 0) di *tutti* i frame del progetto, in
+    /// ordine di scoperta. Cache legata a `content_rev`: non riscatta
+    /// nulla se i pixel non cambiano.
+    pub fn project_palette(&mut self) -> Vec<Rgba> {
+        let rev = self.content_rev;
+        if let Some((cached_rev, cached)) = &self.palette_cache {
+            if *cached_rev == rev {
+                return cached.clone();
+            }
+        }
+        let mut colors: Vec<Rgba> = Vec::new();
+        if let Some(project) = &self.project {
+            for frame in project.frames() {
+                for color in frame.grid().pixels() {
+                    if !color.is_transparent()
+                        && !colors.contains(color)
+                        && colors.len() < PALETTE_LIMIT
+                    {
+                        colors.push(*color);
+                    }
+                }
+            }
+        }
+        self.palette_cache = Some((rev, colors.clone()));
+        colors
+    }
     /// Registra una modifica ai pixel: invalida la texture e avvia il
     /// debounce per il salvataggio automatico.
     pub fn mark_dirty(&mut self) {
@@ -139,12 +212,22 @@ impl PixelApp {
 
     /// Disegna un tratto interpolando in linea retta dal punto precedente
     /// a `cell`: un trascinamento veloce non lascia buchi nel tratteggio.
-    pub fn paint_line(&mut self, cell: (u32, u32), color: Rgba) {
+    ///
+    /// `erase` distingue gomma da penna; l'impronta (un pixel o falloff sui
+    /// vicini) segue `brush_soft` e vive in `pixel-core::brush`.
+    pub fn paint_line(&mut self, cell: (u32, u32), erase: bool) {
         let (x1, y1) = cell;
         let (x0, y0) = self.last_paint_cell.unwrap_or(cell);
         let dx = i32::from(x1 as i32) - i32::from(x0 as i32);
         let dy = i32::from(y1 as i32) - i32::from(y0 as i32);
         let denom = (stroke_steps(dx, dy) as i32).max(1);
+        // Colori e opzioni letti qui fuori dal loop, per non collidere col
+        // prestito mutabile del progetto.
+        let brush = self.brush;
+        let soft = self.brush_soft;
+        if !erase && self.last_paint_cell.is_none() {
+            self.push_recent(brush);
+        }
         // Dalle coordinate u32 ai pass interpolati, riquadrato in-bounds.
         let Some(project) = self.project.as_mut() else {
             return;
@@ -153,7 +236,12 @@ impl PixelApp {
             let x = x0 as i32 + dx * step as i32 / denom;
             let y = y0 as i32 + dy * step as i32 / denom;
             if x >= 0 && y >= 0 {
-                project.set_pixel(x as u32, y as u32, color);
+                let grid = project.active_frame_mut().grid_mut();
+                if erase {
+                    brush::erase(grid, x as u32, y as u32, soft);
+                } else {
+                    brush::stamp(grid, x as u32, y as u32, brush, soft);
+                }
             }
         }
         self.last_paint_cell = Some(cell);
@@ -393,6 +481,9 @@ impl eframe::App for PixelApp {
         let ctx = root.ctx().clone();
         ui::menu_bar::show(self, root, &ctx);
         ui::preview::show(self, root);
+        // Il pannello Colori docking a sinistra dell'anteprima; anche lui
+        // è un laterale, quindi prima del canvas (CentralPanel finale).
+        ui::colors::show(self, root);
         ui::canvas::show(self, root, &ctx);
 
         // L'animazione in riproduzione vuole repaint a 60 Hz; in pausa

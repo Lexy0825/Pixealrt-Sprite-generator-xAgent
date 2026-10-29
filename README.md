@@ -13,6 +13,7 @@ crates/
   pixel-core/        lib — logica dati pura, senza GUI né I/O di rete
     color.rs         RGBA 8 bit: alpha 0 = trasparente (nessuno sfondo implicito)
     grid.rs          griglia WxH bounds-checked, set_pixel / fill_rect
+    brush.rs         impronta penna dura/morbida e gomma (falloff sui vicini)
     frame.rs         frame = griglia + duration_ms
     project.rs       progetto multi-frame: frame attivo, fps, name, CRUD
     project_json.rs  persistenza JSON versione 1, salvataggio atomico (tmp + rename)
@@ -23,6 +24,8 @@ crates/
     ui/menu_bar.rs   menu: File, Aspetto, Animazione, AI Agent
     ui/canvas.rs     canvas con zoom/pan, scacchiera di trasparenza, reticolo
     ui/preview.rs    anteprima animazione live + striscia dei frame
+    ui/colors.rs     pannello Colori: ruota tinta + saturazione, opacità,
+                     palette del progetto, recenti, pennello/gomma
 
   pixel-mcp/         bin — server MCP su stdio (rmcp + tokio)
     tools.rs         i tool esposti all'AI (testabili in unit test senza stdio)
@@ -42,6 +45,16 @@ Un solo file `*.pixproj` (JSON versione 1) è la *single source of truth*:
 Il canvas disegna la griglia con **alpha reale**: i pixel trasparenti restano
 trasparenti (né bianchi né neri), resi leggibili da una scacchiera scura
 e neutra che può essere spenta dal menu "Aspetto".
+
+### Pennelli e colori
+
+Il pannello destro "Colori" offre un selettore a ruota (tinta sull'anello,
+saturazione nel disco), slider di luminosità e opacità, la palette dei
+colori già presenti nel progetto e gli ultimi colori usati. Con il pennello
+**morbido** un tocco a opacità piena sfuma i vicini: i 4 lati prendono
+alpha 0.7, le diagonali 0.4 (falloff documentato in `pixel-core::brush`),
+senza mai cancellare il dettaglio più forte già sotto; la **gomma** cancella
+il centro e attenua i bordi (tasto destro sul canvas = gomma rapida).
 
 ## Comandi
 
