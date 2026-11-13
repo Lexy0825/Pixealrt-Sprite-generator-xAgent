@@ -1,0 +1,7 @@
+# Statistiche delle lingue (GitHub Linguist)
+
+# Cargo.lock e' generato: fuori dal conteggio, altrimenti pesa ~37% come TOML.
+Cargo.lock linguist-generated
+
+# La guida utente vive solo nel branch gh-pages: non deve contare come HTML/CSS.
+on_doc/** linguist-documentation
