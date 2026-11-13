@@ -103,6 +103,8 @@ guida (`index.html`, `style.css`, `img/`, `.nojekyll`) e lo invia al branch
 `gh-pages` senza toccare `main`. Su GitHub, una volta sola:
 **Settings → Pages → Deploy from a branch → `gh-pages` / `(root)`**.
 
+**[Guida utente online →](https://lexy0825.github.io/Pixealrt-Sprite-generator-xAgent/)**
+
 ## Configurazione del client MCP
 
 Esempio per Claude Desktop / Cursor / Windows ecc. (`claude_desktop_config.json`

@@ -42,7 +42,7 @@ $ProgressPreference = 'SilentlyContinue'
 $AppName = 'Pixel Studio'
 $AppKey = 'PixelStudio'
 $Publisher = 'Leon'
-$RepoUrl = 'https://github.com/Lexy0825/Pixealrt-Sprite-generator'
+$RepoUrl = 'https://github.com/Lexy0825/Pixealrt-Sprite-generator-xAgent'
 $RepoRoot = $PSScriptRoot
 
 function Write-Step([string]$Text) {
