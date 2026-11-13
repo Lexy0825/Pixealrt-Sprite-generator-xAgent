@@ -4,6 +4,9 @@ Editor pixel-art / tileset multi-frame in Rust, con **server MCP integrato**:
 un'AI (Claude Desktop, Cursor, qualunque client MCP) può guidare la creazione
 dei disegni mentre l'editor le mostra in tempo reale.
 
+## Online Docs now up:
+🌐 https://lexy0825.github.io/Pixealrt-Sprite-generator-xAgent/ 🌐
+
 ## Architettura
 
 Cargo workspace con tre crate:
