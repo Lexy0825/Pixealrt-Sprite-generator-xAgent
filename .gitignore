@@ -7,4 +7,13 @@
 /freebuff-project-id
 !.github/**
 !docs/*.png
-!on_doc/img/*.png
+
+# Segreti locali dell'utente: il template tracciato e .env.example
+.env
+
+# Cartella di test con sorgenti pixel-art (non committare)
+/Test_reale
+
+# Guida utente: sorgente locale, fuori dalla storia del codice.
+# Si pubblica su GitHub Pages con deploy-docs.cmd (branch gh-pages).
+/on_doc/

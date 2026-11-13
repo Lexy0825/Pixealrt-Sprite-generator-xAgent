@@ -74,6 +74,35 @@ Compatibile Linux, macOS e Windows: tutte le dipendenze sono crate puro-Rust
 o Windows-coscienti già pronti (`eframe`, `rmcp`, `image` solo-png, `zip`,
 `serde`, `thiserror`, `rfd`). Non c'è codice specifico per piattaforma.
 
+## Installazione su Windows
+
+Doppio clic su `install.cmd` (o `powershell -ExecutionPolicy Bypass -File
+install.ps1` da terminale). L'installer:
+
+1. scarica Rust se manca (`rustup-init.exe` con SHA256 verificato, toolchain
+   `stable`, profilo minimale) e ricarica il PATH nella sessione;
+2. controlla i Build Tools MSVC e, se assenti, stampa il comando `winget` utile;
+3. compila con `cargo build --release -p pixel-ui -p pixel-mcp`;
+4. installa `pixel-ui.exe` e `pixel-mcp.exe` in
+   `%LOCALAPPDATA%\Programs\Pixel Studio`, con scorciatoia nel menu Start, sul
+   desktop e la voce in "App e funzionalità".
+
+È un'installazione per-utente: nessun privilegio di amministratore. Opzioni:
+`-InstallDir "D:\Apps\Pixel Studio"`, `-NoDesktopShortcut`, `-SkipRust`. Log
+completo in `%TEMP%\pixel-studio-install-*.log`.
+
+La rimozione passa da "App e funzionalità" oppure dall'`uninstall.ps1` generato
+accanto ai binari, che chiede se cancellare anche i recenti in
+`%APPDATA%\PixelStudio`.
+
+## Guida utente su GitHub Pages
+
+La guida (`on_doc/`) resta fuori dal repository (vedi `.gitignore`): si pubblica
+con `deploy-docs.cmd`, che crea un commit orfano con il solo contenuto della
+guida (`index.html`, `style.css`, `img/`, `.nojekyll`) e lo invia al branch
+`gh-pages` senza toccare `main`. Su GitHub, una volta sola:
+**Settings → Pages → Deploy from a branch → `gh-pages` / `(root)`**.
+
 ## Configurazione del client MCP
 
 Esempio per Claude Desktop / Cursor / Windows ecc. (`claude_desktop_config.json`
